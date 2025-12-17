@@ -1,17 +1,22 @@
 <?php
+// Forgot Password page - Allows users to request password reset
+
+// Start session to store messages or user data
 session_start();
 
+// Initialize variables for error/success messages and user input
 $error = '';
 $success = '';
 $email = '';
 
-// Database connection
+// Database connection setup
 try {
     $host = 'localhost';
     $dbname = 'job_recruitment1';
     $username = 'root';
     $password = 'IbsaMysql1';
 
+    // Create PDO connection with UTF-8 encoding
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
@@ -19,61 +24,72 @@ try {
     $error = "Database connection failed. Error: " . $e->getMessage();
 }
 
-// Simple sanitization function
+/**
+ * Sanitize user input to prevent XSS attacks
+ * @param string|null $data - Input data to sanitize
+ * @return string - Sanitized and trimmed data
+ */
 function sanitizeInput($data)
 {
     return htmlspecialchars(strip_tags(trim($data ?? '')));
 }
 
+// Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = sanitizeInput($_POST['email']);
 
-    // Validate email
+    // Validate email input
     if (empty($email)) {
         $error = "Please enter your email address";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address";
     } elseif ($pdo) {
         try {
-            // Check if users table exists
+            // Check if users table exists in database
             $tableCheck = $pdo->query("SHOW TABLES LIKE 'users'")->fetch();
 
             if (!$tableCheck) {
                 $error = "The users table does not exist in the database.";
             } else {
-                // First, let's check what columns exist in the users table
+                // Get column names from users table to handle dynamic schema
                 $columnsStmt = $pdo->query("SHOW COLUMNS FROM users");
                 $columns = $columnsStmt->fetchAll(PDO::FETCH_COLUMN);
 
-                // Debug: Show available columns
-                // echo "Available columns: " . implode(", ", $columns);
-
-                // Check which email column exists
+                // Identify column names for email, ID, and username
                 $emailColumn = null;
                 $idColumn = null;
                 $usernameColumn = null;
 
-                // Common email column names
+                // Possible column name variations (case-insensitive)
                 $possibleEmailColumns = ['email', 'Email', 'EMAIL', 'user_email', 'userEmail'];
                 $possibleIdColumns = ['id', 'user_id', 'userId', 'ID'];
                 $possibleUsernameColumns = ['username', 'user_name', 'name', 'full_name', 'fullname'];
 
+                // Match actual columns with possible names
                 foreach ($columns as $column) {
-                    if (in_array(strtolower($column), array_map('strtolower', $possibleEmailColumns))) {
+                    $lowerColumn = strtolower($column);
+                    
+                    // Check for email column
+                    if (in_array($lowerColumn, array_map('strtolower', $possibleEmailColumns))) {
                         $emailColumn = $column;
                     }
-                    if (in_array(strtolower($column), array_map('strtolower', $possibleIdColumns))) {
+                    
+                    // Check for ID column
+                    if (in_array($lowerColumn, array_map('strtolower', $possibleIdColumns))) {
                         $idColumn = $column;
                     }
-                    if (in_array(strtolower($column), array_map('strtolower', $possibleUsernameColumns))) {
+                    
+                    // Check for username column
+                    if (in_array($lowerColumn, array_map('strtolower', $possibleUsernameColumns))) {
                         $usernameColumn = $column;
                     }
                 }
 
+                // Error if no email column found
                 if (!$emailColumn) {
                     $error = "No email column found in users table. Available columns: " . implode(", ", $columns);
                 } else {
-                    // Build the SELECT query dynamically based on available columns
+                    // Build dynamic SELECT query based on available columns
                     $selectFields = [];
                     if ($idColumn) $selectFields[] = $idColumn;
                     if ($usernameColumn) $selectFields[] = $usernameColumn;
@@ -85,11 +101,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $user = $stmt->fetch();
 
                     if ($user) {
-                        // Check if password_resets table exists
+                        // Check if password_resets table exists, create if not
                         $tableExists = $pdo->query("SHOW TABLES LIKE 'password_resets'")->fetch();
 
                         if (!$tableExists) {
-                            // Create password_resets table
+                            // Create password_resets table for token storage
                             try {
                                 $pdo->exec("CREATE TABLE password_resets (
                                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -103,16 +119,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
 
-                        // Generate reset token
+                        // Generate secure reset token (32 bytes = 64 hex characters)
                         $token = bin2hex(random_bytes(32));
-                        $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+                        $expires = date('Y-m-d H:i:s', strtotime('+1 hour')); // Token valid for 1 hour
 
-                        // Store token in database
+                        // Store token in password_resets table
                         try {
                             $stmt = $pdo->prepare("INSERT INTO password_resets (email, token, expires_at) VALUES (?, ?, ?)");
                             $stmt->execute([$email, $token, $expires]);
 
-                            // Create reset link
+                            // Build reset link URL
                             $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https://" : "http://";
                             $server_name = $_SERVER['HTTP_HOST'];
                             $script_name = dirname($_SERVER['SCRIPT_NAME']);
@@ -122,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // Get username for personalized message
                             $username = isset($user[$usernameColumn]) ? $user[$usernameColumn] : 'User';
 
+                            // Success message with test link (in production, this would be emailed)
                             $success = "Password reset link has been generated for <strong>$username</strong>!<br><br>";
                             $success .= "<strong>Test Link:</strong> <a href='reset-password.php?token=$token' style='color: #764ba2; font-weight: bold; text-decoration: underline;'>Click here to reset password</a><br><br>";
                             $success .= "<small>Note: In a production environment, this link would be sent to your email ($email).</small>";
@@ -129,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $error = "Could not save reset token: " . $e->getMessage();
                         }
                     } else {
-                        // For security, don't reveal if email exists
+                        // Security: Don't reveal if email exists or not
                         $success = "If your email is registered in our system, you will receive a password reset link shortly.";
                     }
                 }
@@ -147,9 +164,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forgot Password</title>
+    <title>Forgot Password - Job Recruitment</title>
+    <!-- External CSS libraries -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Reset and base styles */
         * {
             margin: 0;
             padding: 0;
@@ -157,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
+        /* Full-page gradient background */
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -166,6 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 20px;
         }
 
+        /* Main container card */
         .password-container {
             background: white;
             border-radius: 20px;
@@ -176,6 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: center;
         }
 
+        /* Logo/header section */
         .logo {
             margin-bottom: 30px;
         }
@@ -199,6 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             line-height: 1.5;
         }
 
+        /* Alert message styling */
         .alert {
             padding: 15px;
             border-radius: 10px;
@@ -229,6 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-decoration: underline;
         }
 
+        /* Form styling */
         .form-group {
             margin-bottom: 25px;
             text-align: left;
@@ -241,6 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 600;
         }
 
+        /* Input with icon */
         .input-with-icon {
             position: relative;
         }
@@ -268,6 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.2);
         }
 
+        /* Button styling */
         .btn {
             background: linear-gradient(to right, #667eea, #764ba2);
             color: white;
@@ -291,6 +317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transform: translateY(0);
         }
 
+        /* Navigation links */
         .links {
             margin-top: 30px;
             display: flex;
@@ -314,6 +341,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-right: 8px;
         }
 
+        /* Debug information panel */
+        .debug-info {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #666;
+            text-align: left;
+        }
+
+        /* Responsive design */
         @media (max-width: 480px) {
             .password-container {
                 padding: 30px 20px;
@@ -328,16 +367,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 margin-bottom: 10px;
             }
         }
-
-        .debug-info {
-            margin-top: 20px;
-            padding: 10px;
-            background: #f5f5f5;
-            border-radius: 5px;
-            font-size: 12px;
-            color: #666;
-            text-align: left;
-        }
     </style>
 </head>
 
@@ -349,18 +378,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p class="subtitle">Enter your email address and we'll send you instructions to reset your password.</p>
         </div>
 
+        <!-- Error message display -->
         <?php if ($error): ?>
             <div class="alert alert-error">
                 <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
             </div>
         <?php endif; ?>
 
+        <!-- Success message display -->
         <?php if ($success): ?>
             <div class="alert alert-success">
                 <i class="fas fa-check-circle"></i> <?php echo $success; ?>
             </div>
         <?php endif; ?>
 
+        <!-- Email input form (only shown if no success message or if there's an error) -->
         <?php if (empty($success) || $error): ?>
             <form method="POST" action="">
                 <div class="form-group">
@@ -378,11 +410,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
         <?php endif; ?>
 
+        <!-- Navigation links -->
         <div class="links">
             <a href="login.php"><i class="fas fa-sign-in-alt"></i> Back to Login</a>
             <a href="../index.php"><i class="fas fa-home"></i> Return to Home</a>
         </div>
 
+        <!-- Debug information (only shown when ?debug=1 is in URL) -->
         <?php if (isset($_GET['debug']) && $_GET['debug'] == '1'): ?>
             <div class="debug-info">
                 <strong>Database Debug Info:</strong><br>
@@ -390,12 +424,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($pdo) {
                     echo "✓ Database Connected<br>";
 
-                    // Check users table
+                    // Check if users table exists
                     $tableCheck = $pdo->query("SHOW TABLES LIKE 'users'")->fetch();
                     if ($tableCheck) {
                         echo "✓ Users table exists<br>";
 
-                        // Show columns
+                        // Display column information for users table
                         $columnsStmt = $pdo->query("SHOW COLUMNS FROM users");
                         $columns = $columnsStmt->fetchAll(PDO::FETCH_ASSOC);
 
