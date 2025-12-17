@@ -1,8 +1,11 @@
 <?php
+// Start session for potential user session management
 session_start();
 
+// Initialize error and success messages
 $error = '';
 $success = '';
+// Get token from URL parameter
 $token = $_GET['token'] ?? '';
 
 // Database connection
@@ -12,6 +15,7 @@ try {
     $username = 'root';
     $password = 'IbsaMysql1';
 
+    // Create PDO connection
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
@@ -19,13 +23,17 @@ try {
     $error = "Database connection failed: " . $e->getMessage();
 }
 
-// Simple sanitization function
+/**
+ * Simple sanitization function to clean user input
+ * @param string|null $data - Input data to sanitize
+ * @return string - Sanitized data
+ */
 function sanitizeInput($data)
 {
     return htmlspecialchars(strip_tags(trim($data ?? '')));
 }
 
-// Debug: Check what's in the users table
+// Debug: Check what's in the users table (for troubleshooting)
 if ($pdo && isset($_GET['debug'])) {
     try {
         echo "<h3>Debug Info:</h3>";
@@ -36,7 +44,7 @@ if ($pdo && isset($_GET['debug'])) {
         if ($tableCheck) {
             echo "✓ Users table exists<br>";
 
-            // Show all columns
+            // Show all columns in users table
             $columnsStmt = $pdo->query("SHOW COLUMNS FROM users");
             $columns = $columnsStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -47,7 +55,7 @@ if ($pdo && isset($_GET['debug'])) {
             }
             echo "</ul>";
 
-            // Show some sample data
+            // Show some sample data from users table
             echo "<h4>Sample data (first 5 rows):</h4>";
             $sampleStmt = $pdo->query("SELECT * FROM users LIMIT 5");
             $sampleData = $sampleStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -82,18 +90,19 @@ if ($pdo && isset($_GET['debug'])) {
             echo "✗ Password_resets table does not exist";
         }
 
-        exit();
+        exit(); // Stop execution after debug output
     } catch (PDOException $e) {
         echo "Error: " . $e->getMessage();
         exit();
     }
 }
 
-// Check if token is provided
+// Check if token is provided in URL
 if (empty($token)) {
     $error = "Invalid or missing reset token.";
 }
 
+// Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = sanitizeInput($_POST['password'] ?? '');
     $confirm_password = sanitizeInput($_POST['confirm_password'] ?? '');
@@ -109,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Database connection issue. Please try again later.";
     } else {
         try {
-            // Verify token exists and is not expired
+            // Verify token exists and is not expired in password_resets table
             $stmt = $pdo->prepare("SELECT email, expires_at FROM password_resets WHERE token = ?");
             $stmt->execute([$token]);
             $resetRequest = $stmt->fetch();
@@ -125,10 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $columnsStmt = $pdo->query("SHOW COLUMNS FROM users");
                 $columns = $columnsStmt->fetchAll(PDO::FETCH_COLUMN);
 
-                // Show available columns for debugging
-                // echo "Available columns: " . implode(", ", $columns);
-
-                // Try to find the correct columns
+                // Try to find the correct columns dynamically
                 $emailColumn = null;
                 $passwordColumn = null;
 
@@ -164,10 +170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                // If still not found, use the first column that might be email or password
+                // If still not found, use common column positions as fallback
                 if (!$emailColumn && count($columns) > 0) {
-                    // Check common email column positions
-                    $commonEmailPositions = [1, 2, 3]; // Often email is 2nd or 3rd column
+                    // Check common email column positions (Often email is 2nd or 3rd column)
+                    $commonEmailPositions = [1, 2, 3];
                     foreach ($commonEmailPositions as $pos) {
                         if (isset($columns[$pos])) {
                             $emailColumn = $columns[$pos];
@@ -187,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                // Final fallback
+                // Final fallback - assume standard column positions
                 if (!$emailColumn && count($columns) > 1) {
                     $emailColumn = $columns[1]; // Assume second column is email
                 }
@@ -196,22 +202,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $passwordColumn = $columns[2]; // Assume third column is password
                 }
 
+                // Error if required columns cannot be identified
                 if (!$emailColumn || !$passwordColumn) {
                     $error = "Could not identify required columns in users table. Available columns: " . implode(", ", $columns);
                     $error .= "<br><br><a href='?debug=1&token=$token' style='color: blue;'>Click here to see table structure</a>";
                 } else {
-                    // Hash the new password
+                    // Hash the new password for secure storage
                     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-                    // Update password in users table
+                    // Update password in users table using dynamic column names
                     $updateStmt = $pdo->prepare("UPDATE users SET $passwordColumn = ? WHERE $emailColumn = ?");
                     $updateResult = $updateStmt->execute([$hashed_password, $email]);
 
                     if ($updateResult) {
-                        // Delete the used token
+                        // Delete the used token from password_resets table
                         $deleteStmt = $pdo->prepare("DELETE FROM password_resets WHERE token = ?");
                         $deleteStmt->execute([$token]);
 
+                        // Success message with login link
                         $success = "Password has been reset successfully!<br>";
                         $success .= "Used columns: $emailColumn (email) and $passwordColumn (password)<br>";
                         $success .= "<a href='login.php' style='color: #764ba2; font-weight: bold;'>Click here to login</a>";
