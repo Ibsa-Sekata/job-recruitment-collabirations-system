@@ -1,24 +1,36 @@
 <?php
+// Include helper functions (likely handles sessions, utilities, etc.)
 require_once __DIR__ . '/../../src/helpers.php';
+
+// Include authentication controller
 require_once __DIR__ . '/../../src/Controllers/AuthController.php';
 
+// Variable to store error message
 $error = '';
 
+// Check if the form was submitted using POST method
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
 
+    // Get email and password from POST request (trimmed to avoid extra spaces)
+    $email = trim($_POST['email'] ?? '');
+    $password = trim($_POST['password'] ?? '');
+
+    // Call login method from AuthController
     $result = AuthController::login($email, $password);
 
+    // If login is successful
     if ($result['ok']) {
-        // Redirect based on role
+
+        // Redirect user based on their role
         if ($_SESSION['user']['role'] === 'employer') {
             header("Location: ../employer/dashboard.php");
         } else {
             header("Location: ../index.php");
         }
-        exit;
+        exit; // Stop script execution after redirect
+
     } else {
+        // Store error message to display on the page
         $error = $result['msg'];
     }
 }
@@ -29,15 +41,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="utf-8">
     <title>Login - Job Recruitment</title>
+
+    <!-- Main application stylesheet -->
     <link rel="stylesheet" href="../css/app.css?v=20">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <!-- Font Awesome icons -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
     <style>
+    /* Container for login form */
     .login-container {
         max-width: 400px;
         margin: 4rem auto;
         padding: 0 1rem;
     }
 
+    /* Card styling */
     .login-card {
         background: white;
         border-radius: 1.5rem;
@@ -46,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         border: 1px solid rgba(0, 0, 0, 0.05);
     }
 
+    /* Header section */
     .login-header {
         text-align: center;
         margin-bottom: 2rem;
@@ -60,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         color: var(--gray);
     }
 
+    /* Form layout */
     .form-group {
         margin-bottom: 1.5rem;
     }
@@ -71,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         color: var(--dark);
     }
 
+    /* Input icon styling */
     .input-icon {
         position: relative;
     }
@@ -87,10 +110,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         padding-left: 3rem;
     }
 
+    /* Forgot password link */
     .remember-forgot {
         display: flex;
         justify-content: flex-end;
-        align-items: center;
         margin-bottom: 1.5rem;
         font-size: 0.875rem;
     }
@@ -104,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         text-decoration: underline;
     }
 
+    /* Register link section */
     .register-link {
         text-align: center;
         margin-top: 1.5rem;
@@ -121,12 +145,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .register-link a:hover {
         text-decoration: underline;
     }
-
-    /* role-selection styles removed from login (not used on this page) */
     </style>
 </head>
 
 <body>
+    <!-- Navigation bar -->
     <nav class="navbar">
         <div class="container">
             <a href="../index.php" class="brand">Job Recruitment</a>
@@ -136,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </nav>
 
+    <!-- Login form container -->
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
@@ -143,18 +167,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p>Sign in to your account to continue</p>
             </div>
 
+            <!-- Display error message if login fails -->
             <?php if ($error): ?>
             <div class="alert alert-danger">
-                <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?>
+                <i class="fas fa-exclamation-circle"></i>
+                <?= htmlspecialchars($error) ?>
             </div>
             <?php endif; ?>
 
+            <!-- Login form -->
             <form method="post" action="">
                 <div class="form-group">
                     <label class="form-label" for="email">Email Address</label>
                     <div class="input-icon">
                         <i class="fas fa-envelope"></i>
-                        <input type="email" id="email" name="email" class="input" placeholder="you@example.com"
+                        <input type="email" id="email" name="email"
+                            class="input"
+                            placeholder="you@example.com"
                             required>
                     </div>
                 </div>
@@ -163,13 +192,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="form-label" for="password">Password</label>
                     <div class="input-icon">
                         <i class="fas fa-lock"></i>
-                        <input type="password" id="password" name="password" class="input" placeholder="••••••••"
+                        <input type="password" id="password" name="password"
+                            class="input"
+                            placeholder="••••••••"
                             required>
                     </div>
                 </div>
 
                 <div class="remember-forgot">
-                    <a href="forgot-password.php" class="forgot-password">Forgot password?</a>
+                    <a href="forgot-password.php" class="forgot-password">
+                        Forgot password?
+                    </a>
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="width: 100%;">
@@ -177,8 +210,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </button>
             </form>
 
+            <!-- Register redirect -->
             <div class="register-link">
-                Don't have an account? <a href="register.php">Create Account</a>
+                Don't have an account?
+                <a href="register.php">Create Account</a>
             </div>
         </div>
     </div>
