@@ -10,6 +10,19 @@ AdminController::logout();
 
 // Redirect user back to the login page after logout
 header('Location: login.php');
+<?php
+//Include helper functions(session handling, utilities and etc)
+require_once __DIR__ . '/../../src/helpers.php';
+// Include Admincontroller to access logout functionality 
+require_once __DIR__ . '/../../src/Controllers/AdminController.php';
+// Call logout method to destroy admin session and clear authentication data.
+AdminController::logout();
+// Redirect user back to the login page after logout.
+header('Location: login.php');
+// Stop further script execution 
+exit;
+
+
 
 // Stop further script execution
 exit;
